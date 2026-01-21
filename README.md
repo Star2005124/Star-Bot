@@ -75,7 +75,7 @@ npm start
 
 <div align="center">
   <a href="https://wa.me/918304063560">
-    <img src="https://img.shields.io/badge/💬_Contact_on_WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white"/>
+    <img src="https://img.shields.io/badge/Contact_on_WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white"/>
   </a>
 </div>
 
