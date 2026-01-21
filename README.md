@@ -7,18 +7,6 @@
 
 ---
 
-🔗 Quick Links
-
-<div align="center">
-
-https://forka.spcfy.eu  
-https://forka.spcfy.eu  
-https://forka.spcfy.eu
-
-</div>
-
----
-
 📋 Features
 
 - 🎮 Games  
@@ -31,11 +19,15 @@ https://forka.spcfy.eu
 ⚡ Quick Start
 
 1. Clone & Install
-`bash
+```bash
 git clone https://github.com/amanmohdtp/Forka-Bot.git
+```
+```bash
 cd Forka-Bot
+```
+```bash
 npm install
-`
+```
 
 2. Configure
 `bash
@@ -45,9 +37,9 @@ Edit .env file with your settings
 `
 
 3. Start Bot
-`bash
+```bash
 npm start
-`
+```
 
 ---
 
