@@ -1,7 +1,7 @@
 🤖 Forka WhatsApp Bot
 
 <div align="center">
-  <img src="https://i.imgur.com/6DwHKh9.jpeg" alt="Forka Bot Logo" width="400"/>
+  <img src="https://github.com/amanmohdtp/Forka-Bot/blob/40fcd398abfbb29db13b8830fefaff1532c4e03f/20260121_163933.jpg" alt="Forka Bot Logo" width="400"/>
   <h3>🚀 Advanced WhatsApp Bot</h3>
 </div>
 
