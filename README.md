@@ -47,7 +47,7 @@ npm start
 
 <div align="center">
   <a href="https://forka.spcfy.eu">
-    <img src="https://img.shields.io/badge/🌐OpenDashboard-forka.spcfy.eu-9B59B6?style=for-the-badge" width="300"/>
+    <img src="https://img.shields.io/badge/🌐_Open_Dashboard-forka.spcfy.eu-9B59B6?style=for-the-badge" width="300"/>
   </a>
 </div>
 
@@ -57,7 +57,7 @@ npm start
 
 <div align="center">
   <a href="https://forka.spcfy.eu">
-    <img src="https://img.shields.io/badge/📱DeployNow-forka.spcfy.eu-FF9F43?style=for-the-badge" width="350"/>
+    <img src="https://img.shields.io/badge/📱_Deploy_Now-forka.spcfy.eu-FF9F43?style=for-the-badge" width="350"/>
   </a>
 </div>
 
@@ -75,7 +75,7 @@ npm start
 
 <div align="center">
   <a href="https://wa.me/918304063560">
-    <img src="https://img.shields.io/badge/💬Contacton_WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white"/>
+    <img src="https://img.shields.io/badge/💬_Contact_on_WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white"/>
   </a>
 </div>
 
