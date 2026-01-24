@@ -1,6 +1,7 @@
-# Forka Bot - Server Side Only 🎮
+# Forka Bot
 
 WhatsApp bot with pairing code deployment. No web interface needed.
+🚨 Check Common issues #5
 
 ## 🚀 Quick Setup
 
@@ -211,6 +212,7 @@ For issues:
 2. Verify `.env` configuration
 3. Check terminal logs
 4. Delete `auth_info` and retry
+5. If phone number in env is not being working, open index and set number there!
 
 ---
 
