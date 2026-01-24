@@ -1,42 +1,24 @@
 {
-  "name": "forka-whatsapp-bot",
-  "version": "3.0.0",
-  "type": "module",
-  "description": "Forka - Advanced WhatsApp bot with AI, moderation, and entertainment features",
+  "name": "forka-bot",
+  "version": "2.0.0",
+  "description": "Forka WhatsApp Bot - Server Side Only",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "dev": "node --watch index.js",
-    "test": "echo \"No tests specified\" && exit 0"
+    "start": "node index.js"
   },
   "keywords": [
-    "whatsapp-bot",
-    "chatbot",
-    "automation",
-    "games",
-    "moderation"
+    "whatsapp",
+    "bot",
+    "baileys",
+    "forka"
   ],
   "author": "amanmohdtp",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.8",
-    "@hapi/boom": "^10.0.1",
-    "pino": "^8.19.0",
     "chalk": "^5.3.0",
-    "dotenv": "^16.4.5",
-    "axios": "^1.7.2",
-    "moment": "^2.30.1",
-    "qrcode-terminal": "^0.12.0",
-    "cheerio": "^1.0.0",
-    "form-data": "^4.0.0",
-    "node-cache": "^5.1.2",
-    "translate-google-api": "^1.0.6",
-    "weather-js": "^2.0.0",
-    "g-i-s": "^2.1.9",
-    "yt-search": "^2.10.4",
-    "ytdl-core": "^4.11.5",
-    "fluent-ffmpeg": "^2.1.2",
-    "jimp": "^0.22.12"
+    "pino": "^8.19.0"
   },
   "engines": {
     "node": ">=18.0.0"
