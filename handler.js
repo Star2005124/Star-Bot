@@ -19,11 +19,119 @@ const config = {
     startTime: Date.now()
 };
 
-// Sudo helpers
+// ═══════════════════════════════════════════════════════════
+// SUDO USERS LOADING
+// ═══════════════════════════════════════════════════════════
+let sudoUsers = [];
+try {
+    const sudoPath = path.join(__dirname, 'auth_info', 'sudo.json');
+    if (fs.existsSync(sudoPath)) {
+        sudoUsers = JSON.parse(fs.readFileSync(sudoPath, 'utf8'));
+    }
+} catch (err) {
+    console.log('No sudo file found or error loading:', err.message);
+}
+global.sudoUsers = sudoUsers || [];
+
+// ═══════════════════════════════════════════════════════════
+// RATE LIMITING
+// ═══════════════════════════════════════════════════════════
+const rateLimit = new Map();
+const checkRateLimit = (userId, command, limit = 5, windowMs = 60000) => {
+    const key = `${userId}_${command}`;
+    const now = Date.now();
+    
+    if (!rateLimit.has(key)) {
+        rateLimit.set(key, [now]);
+        return true;
+    }
+    
+    const timestamps = rateLimit.get(key);
+    const recent = timestamps.filter(time => now - time < windowMs);
+    
+    if (recent.length >= limit) {
+        return false;
+    }
+    
+    recent.push(now);
+    rateLimit.set(key, recent);
+    
+    // Clean old entries
+    if (recent.length > limit * 2) {
+        rateLimit.set(key, recent.slice(-limit));
+    }
+    
+    return true;
+};
+
+// ═══════════════════════════════════════════════════════════
+// SECURITY FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+const validatePhoneNumber = (num) => {
+    const clean = num.replace(/[^0-9]/g, '');
+    return clean.length >= 10 && clean.length <= 15;
+};
+
+const sanitizeText = (text, maxLength = 100) => {
+    if (!text) return '';
+    return text.replace(/[<>]/g, '').substring(0, maxLength);
+};
+
+const formatNumber = (jid) => {
+    const num = jid.split('@')[0];
+    return `+${num}`;
+};
+
+// ═══════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+const formatUptime = (ms) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
+    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+    return `${seconds}s`;
+};
+
+const isOwner = (sender) => {
+    const num = sender.split('@')[0];
+    if (!config.ownerNumber) return false;
+    return config.ownerNumber.split(',')
+        .map(owner => owner.trim().replace('+', ''))
+        .some(owner => owner === num);
+};
+
 const isSudo = (sender) => {
     const num = sender.split('@')[0];
     return global.sudoUsers?.includes(num) || false;
 };
+
+const isAdmin = async (sock, groupId, userId) => {
+    try {
+        const metadata = await sock.groupMetadata(groupId);
+        const participant = metadata.participants.find(p => p.id === userId);
+        return participant?.admin === 'admin' || participant?.admin === 'superadmin';
+    } catch {
+        return false;
+    }
+};
+
+const isBotAdmin = async (sock, groupId) => {
+    try {
+        const metadata = await sock.groupMetadata(groupId);
+        const botId = sock.user.id;
+        const participant = metadata.participants.find(p => p.id === botId);
+        return participant?.admin === 'admin' || participant?.admin === 'superadmin';
+    } catch {
+        return false;
+    }
+};
+
+const random = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ═══════════════════════════════════════════════════════════
 // GAME STATE
@@ -141,62 +249,54 @@ const gameData = {
     ]
 };
 
-// Auto cleanup games after 5 minutes
-setInterval(() => {
-    const now = Date.now();
-    const timeout = 5 * 60 * 1000;
-    
-    for (const [type, games] of Object.entries(gameState)) {
-        for (const [key, game] of games.entries()) {
-            if (now - game.createdAt > timeout) {
-                games.delete(key);
+// ═══════════════════════════════════════════════════════════
+// GAME CLEANUP INTERVAL
+// ═══════════════════════════════════════════════════════════
+let cleanupInterval;
+const startCleanupInterval = () => {
+    cleanupInterval = setInterval(() => {
+        const now = Date.now();
+        const timeout = 5 * 60 * 1000;
+        
+        for (const [type, games] of Object.entries(gameState)) {
+            for (const [key, game] of games.entries()) {
+                if (now - game.createdAt > timeout) {
+                    games.delete(key);
+                }
             }
         }
-    }
-}, 60000);
+    }, 60000);
+};
+
+// Start cleanup on module load
+startCleanupInterval();
 
 // ═══════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
+// COMMAND ALIASES
 // ═══════════════════════════════════════════════════════════
-const formatUptime = (ms) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) return `${days}d ${hours % 24}h ${minutes % 60}m`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
-    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
+const commandAliases = {
+    'ttt': ['tictactoe', 'tic'],
+    'rps': ['rockpaperscissors'],
+    'flip': ['coinflip'],
+    'wc': ['wordchain'],
+    'eq': ['emojiquiz'],
+    'type': ['fasttype'],
+    'remove': ['kick'],
+    'setsubject': ['setname'],
+    'setdescription': ['setdesc'],
+    'adminlist': ['admins'],
+    'gcinfo': ['groupinfo'],
+    'uptime': ['runtime']
 };
 
-const isOwner = (sender) => {
-    const num = sender.split('@')[0];
-    return config.ownerNumber.split(',').some(owner => owner.trim() === num);
-};
-
-const isAdmin = async (sock, groupId, userId) => {
-    try {
-        const metadata = await sock.groupMetadata(groupId);
-        const participant = metadata.participants.find(p => p.id === userId);
-        return participant?.admin === 'admin' || participant?.admin === 'superadmin';
-    } catch {
-        return false;
+const getCommand = (cmd) => {
+    for (const [main, aliases] of Object.entries(commandAliases)) {
+        if (aliases.includes(cmd)) {
+            return main;
+        }
     }
+    return cmd;
 };
-
-const isBotAdmin = async (sock, groupId) => {
-    try {
-        const metadata = await sock.groupMetadata(groupId);
-        const botId = sock.user.id;
-        const participant = metadata.participants.find(p => p.id === botId);
-        return participant?.admin === 'admin' || participant?.admin === 'superadmin';
-    } catch {
-        return false;
-    }
-};
-
-const random = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // ═══════════════════════════════════════════════════════════
 // MESSAGE HANDLER
@@ -213,10 +313,18 @@ export const handleMessage = async (sock, msg) => {
 
         // Handle fast type game responses (no prefix)
         if (!body.startsWith(config.prefix)) {
-            const gameId = `${from}_${sender}`;
+            const gameId = `fasttype_${from}_${sender}`;
             const game = gameState.fasttype.get(gameId);
             
             if (game && body.toLowerCase().trim() === game.word.toLowerCase()) {
+                // Check rate limit for fasttype
+                if (!checkRateLimit(sender, 'fasttype_win', 10, 30000)) {
+                    await sock.sendMessage(from, {
+                        text: `⚠️ Too fast! Please wait a moment before playing again.`
+                    }, { quoted: msg });
+                    return;
+                }
+                
                 const time = ((Date.now() - game.startTime) / 1000).toFixed(2);
                 gameState.fasttype.delete(gameId);
                 
@@ -226,33 +334,51 @@ export const handleMessage = async (sock, msg) => {
                 else if (time < 6) rating = '👍 Good!';
                 else rating = '👏 Nice try!';
                 
-                return sock.sendMessage(from, {
+                await sock.sendMessage(from, {
                     text: `✅ *CORRECT!*\n\nWord: ${game.word}\nTime: ${time}s\n${rating}`
                 }, { quoted: msg });
+                return;
             }
+        }
+
+        // Ignore messages without prefix
+        if (!body.startsWith(config.prefix)) return;
+
+        const args = body.slice(config.prefix.length).trim().split(/ +/);
+        let cmd = args.shift().toLowerCase();
+        const text = args.join(' ');
+
+        // Handle command aliases
+        cmd = getCommand(cmd);
+
+        // Check rate limiting for commands
+        if (!checkRateLimit(sender, cmd)) {
+            await sock.sendMessage(from, { 
+                text: `⚠️ Too many requests! Please wait a moment.` 
+            }, { quoted: msg });
             return;
         }
 
-        const args = body.slice(config.prefix.length).trim().split(/ +/);
-        const cmd = args.shift().toLowerCase();
-        const text = args.join(' ');
-
-        const reply = (text) => sock.sendMessage(from, { text }, { quoted: msg });
-        const replyImg = (text, img) => sock.sendMessage(from, { 
+        const reply = async (text) => await sock.sendMessage(from, { text }, { quoted: msg });
+        const replyImg = async (text, img) => await sock.sendMessage(from, { 
             image: { url: img }, 
             caption: text 
         }, { quoted: msg });
-        const mention = (text, users) => sock.sendMessage(from, { text, mentions: users }, { quoted: msg });
+        const mention = async (text, users) => await sock.sendMessage(from, { text, mentions: users }, { quoted: msg });
 
         const mentionedJid = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
         const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
         const quotedParticipant = msg.message?.extendedTextMessage?.contextInfo?.participant;
 
+        // Send typing indicator for complex commands
+        await sock.sendPresenceUpdate('composing', from);
+        setTimeout(() => sock.sendPresenceUpdate('paused', from), 1000);
+
         // ═══════════════════════════════════════════════════════════
         // CORE COMMANDS
         // ═══════════════════════════════════════════════════════════
         if (cmd === 'alive') {
-            return replyImg(
+            return await replyImg(
                 `✅ *${config.botName} is Online!*\n\n` +
                 `⏰ Uptime: ${formatUptime(Date.now() - config.startTime)}\n` +
                 `📱 Prefix: ${config.prefix}\n\n` +
@@ -268,7 +394,7 @@ export const handleMessage = async (sock, msg) => {
                                [...gameState.wordchain.keys()].length +
                                [...gameState.quiz.keys()].length;
             
-            return replyImg(
+            return await replyImg(
 `╔═══════════════════════════╗
 ║  🎮 *${config.botName}* 🎮
 ╚═══════════════════════════╝
@@ -342,11 +468,11 @@ export const handleMessage = async (sock, msg) => {
         if (cmd === 'ping') {
             const start = Date.now();
             await reply('🏓 Pinging...');
-            return reply(`🏓 *Pong!*\n⚡ Speed: ${Date.now() - start}ms`);
+            return await reply(`🏓 *Pong!*\n⚡ Speed: ${Date.now() - start}ms`);
         }
 
         if (cmd === 'botinfo') {
-            return reply(
+            return await reply(
 `🤖 *Bot Information*
 
 📱 Name: ${config.botName}
@@ -370,7 +496,7 @@ export const handleMessage = async (sock, msg) => {
         }
 
         if (cmd === 'owner') {
-            return reply(
+            return await reply(
 `👤 *Bot Owner Information*
 
 📱 Owner Numbers:
@@ -387,9 +513,9 @@ ${config.ownerNumber ? config.ownerNumber.split(',').map(n => `• +${n.trim()}`
 • Special permissions`);
         }
 
-        if (cmd === 'runtime' || cmd === 'uptime') {
+        if (cmd === 'runtime') {
             const uptime = Date.now() - config.startTime;
-            return reply(
+            return await reply(
 `⏰ *Runtime Information*
 
 🕐 Started: ${new Date(config.startTime).toLocaleString()}
@@ -409,21 +535,24 @@ ${config.ownerNumber ? config.ownerNumber.split(',').map(n => `• +${n.trim()}`
         // ═══════════════════════════════════════════════════════════
         
         // TIC TAC TOE
-        if (cmd === 'ttt' || cmd === 'tictactoe') {
-            if (!isGroup) return reply('❌ This game is for groups only!');
+        if (cmd === 'ttt') {
+            if (!isGroup) return await reply('❌ This game is for groups only!');
             
             // Playing a move
             if (args[0] && !isNaN(args[0])) {
-                const gameId = from;
+                const gameId = `ttt_${from}`;
                 const game = gameState.tictactoe.get(gameId);
-                if (!game) return reply('❌ No active game! Start with: .ttt @user');
+                if (!game) return await reply('❌ No active game! Start with: .ttt @user');
                 
                 const currentPlayer = game.players[game.turn];
-                if (sender !== currentPlayer) return reply('❌ Not your turn!');
+                if (sender !== currentPlayer) return await reply('❌ Not your turn!');
                 
                 const pos = parseInt(args[0]) - 1;
-                if (pos < 0 || pos > 8) return reply('❌ Invalid position! Use 1-9');
-                if (game.board[pos] !== ' ') return reply('❌ Position already taken!');
+                if (pos < 0 || pos > 8) return await reply('❌ Invalid position! Use 1-9');
+                if (game.board[pos] !== ' ') return await reply('❌ Position already taken!');
+                
+                // Update last activity
+                game.lastActivity = Date.now();
                 
                 const symbol = game.turn === 0 ? '❌' : '⭕';
                 game.board[pos] = symbol;
@@ -448,7 +577,7 @@ ${config.ownerNumber ? config.ownerNumber.split(',').map(n => `• +${n.trim()}`
                 
                 if (checkWin(game.board, symbol)) {
                     gameState.tictactoe.delete(gameId);
-                    return mention(
+                    return await mention(
 `🎉 *GAME OVER!*
 
 ${renderBoard(game.board)}
@@ -461,34 +590,35 @@ ${symbol} Congratulations!`,
                 
                 if (!game.board.includes(' ')) {
                     gameState.tictactoe.delete(gameId);
-                    return mention(`🤝 *DRAW!*\n${renderBoard(game.board)}\n\nNo winner!`, game.players);
+                    return await mention(`🤝 *DRAW!*\n${renderBoard(game.board)}\n\nNo winner!`, game.players);
                 }
                 
                 game.turn = 1 - game.turn;
                 const nextPlayer = game.players[game.turn];
                 const nextSymbol = game.turn === 0 ? '❌' : '⭕';
                 
-                return mention(
+                return await mention(
 `🎮 *TIC TAC TOE*\n${renderBoard(game.board)}\n\nTurn: ${nextSymbol} @${nextPlayer.split('@')[0]}\nUse: ${config.prefix}ttt <1-9>`,
                     game.players
                 );
             }
             
             // Starting new game
-            if (mentionedJid.length === 0) return reply('❌ Mention a player!\nUsage: .ttt @user');
+            if (mentionedJid.length === 0) return await reply('❌ Mention a player!\nUsage: .ttt @user');
             
             const opponent = mentionedJid[0];
-            if (opponent === sender) return reply('❌ You cannot play with yourself!');
+            if (opponent === sender) return await reply('❌ You cannot play with yourself!');
             
-            const gameId = from;
-            if (gameState.tictactoe.has(gameId)) return reply('❌ A game is already running!');
+            const gameId = `ttt_${from}`;
+            if (gameState.tictactoe.has(gameId)) return await reply('❌ A game is already running!');
             
             const board = [' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '];
             gameState.tictactoe.set(gameId, {
                 board,
                 players: [sender, opponent],
                 turn: 0,
-                createdAt: Date.now()
+                createdAt: Date.now(),
+                lastActivity: Date.now()
             });
             
             const renderBoard = (b) => `
@@ -500,7 +630,7 @@ ${symbol} Congratulations!`,
 ┃ ${b[6]} ┃ ${b[7]} ┃ ${b[8]} ┃
 ┗━━━┻━━━┻━━━┛`;
             
-            return mention(
+            return await mention(
 `🎮 *TIC TAC TOE STARTED!*\n${renderBoard(board)}\n\n❌ Player 1: @${sender.split('@')[0]}\n⭕ Player 2: @${opponent.split('@')[0]}\n\nTurn: ❌ @${sender.split('@')[0]}\n\nUse: ${config.prefix}ttt <1-9> to play`,
                 [sender, opponent]
             );
@@ -508,12 +638,12 @@ ${symbol} Congratulations!`,
 
         // ROCK PAPER SCISSORS
         if (cmd === 'rps') {
-            if (!args[0]) return reply('Usage: .rps <rock/paper/scissors>');
+            if (!args[0]) return await reply('Usage: .rps <rock/paper/scissors>');
             
             const choices = ['rock', 'paper', 'scissors'];
             const userChoice = args[0].toLowerCase();
             
-            if (!choices.includes(userChoice)) return reply('❌ Invalid! Use: rock, paper, or scissors');
+            if (!choices.includes(userChoice)) return await reply('❌ Invalid! Use: rock, paper, or scissors');
             
             const botChoice = random(choices);
             const emojis = { rock: '🪨', paper: '📄', scissors: '✂️' };
@@ -531,64 +661,79 @@ ${symbol} Congratulations!`,
                 result = '😔 *YOU LOSE!*';
             }
             
-            return reply(`🎮 *ROCK PAPER SCISSORS*\n\nYou: ${emojis[userChoice]} ${userChoice.toUpperCase()}\nBot: ${emojis[botChoice]} ${botChoice.toUpperCase()}\n\n${result}`);
+            return await reply(`🎮 *ROCK PAPER SCISSORS*\n\nYou: ${emojis[userChoice]} ${userChoice.toUpperCase()}\nBot: ${emojis[botChoice]} ${botChoice.toUpperCase()}\n\n${result}`);
         }
 
         // DICE
         if (cmd === 'dice') {
             const dice = Math.floor(Math.random() * 6) + 1;
             const diceEmoji = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'][dice - 1];
-            return reply(`🎲 *DICE ROLL*\n\n${diceEmoji}\n\nYou rolled: *${dice}*`);
+            return await reply(`🎲 *DICE ROLL*\n\n${diceEmoji}\n\nYou rolled: *${dice}*`);
         }
 
         // COIN FLIP
-        if (cmd === 'coinflip' || cmd === 'flip') {
+        if (cmd === 'coinflip') {
             const result = Math.random() < 0.5 ? 'HEADS' : 'TAILS';
             const emoji = result === 'HEADS' ? '👑' : '💰';
-            return reply(`🪙 *COIN FLIP*\n\n${emoji}\n\nResult: *${result}*`);
+            return await reply(`🪙 *COIN FLIP*\n\n${emoji}\n\nResult: *${result}*`);
         }
 
         // ROLL
         if (cmd === 'roll') {
             const number = Math.floor(Math.random() * 100) + 1;
-            return reply(`🎲 *RANDOM ROLL*\n\nYou rolled: *${number}*/100`);
+            return await reply(`🎲 *RANDOM ROLL*\n\nYou rolled: *${number}*/100`);
         }
 
         // GUESS NUMBER
         if (cmd === 'guess') {
-            const gameId = `${from}_${sender}`;
+            const gameId = `guess_${from}_${sender}`;
             
             if (!args[0]) {
                 if (!gameState.guess.has(gameId)) {
                     const number = Math.floor(Math.random() * 100) + 1;
-                    gameState.guess.set(gameId, { number, attempts: 0, createdAt: Date.now() });
-                    return reply(`🎯 *NUMBER GUESSING GAME*\n\nI'm thinking of a number between 1-100!\n\nUsage: ${config.prefix}guess <number>`);
+                    gameState.guess.set(gameId, { 
+                        number, 
+                        attempts: 0, 
+                        createdAt: Date.now(),
+                        lastActivity: Date.now()
+                    });
+                    return await reply(`🎯 *NUMBER GUESSING GAME*\n\nI'm thinking of a number between 1-100!\n\nUsage: ${config.prefix}guess <number>`);
                 }
-                return reply('Usage: .guess <number>');
+                return await reply('Usage: .guess <number>');
             }
 
             const game = gameState.guess.get(gameId);
             if (!game) {
                 const number = Math.floor(Math.random() * 100) + 1;
-                gameState.guess.set(gameId, { number, attempts: 1, createdAt: Date.now() });
+                gameState.guess.set(gameId, { 
+                    number, 
+                    attempts: 1, 
+                    createdAt: Date.now(),
+                    lastActivity: Date.now()
+                });
             }
 
             const userGuess = parseInt(args[0]);
+            if (isNaN(userGuess) || userGuess < 1 || userGuess > 100) {
+                return await reply('❌ Please enter a number between 1-100!');
+            }
+
             const activeGame = gameState.guess.get(gameId);
             activeGame.attempts++;
+            activeGame.lastActivity = Date.now();
 
             if (userGuess === activeGame.number) {
                 gameState.guess.delete(gameId);
-                return reply(`🎉 *CORRECT!*\n\nNumber: ${activeGame.number}\nAttempts: ${activeGame.attempts}\n${activeGame.attempts <= 5 ? '🌟 Excellent!' : '👏 Well done!'}`);
+                return await reply(`🎉 *CORRECT!*\n\nNumber: ${activeGame.number}\nAttempts: ${activeGame.attempts}\n${activeGame.attempts <= 5 ? '🌟 Excellent!' : '👏 Well done!'}`);
             }
 
             const hint = userGuess < activeGame.number ? '📈 Higher!' : '📉 Lower!';
-            return reply(`${hint}\n\nAttempts: ${activeGame.attempts}\nTry: ${config.prefix}guess <number>`);
+            return await reply(`${hint}\n\nAttempts: ${activeGame.attempts}\nTry: ${config.prefix}guess <number>`);
         }
 
         // SHIP
         if (cmd === 'ship') {
-            if (mentionedJid.length < 2) return reply('❌ Mention 2 users!\nUsage: .ship @user1 @user2');
+            if (mentionedJid.length < 2) return await reply('❌ Mention 2 users!\nUsage: .ship @user1 @user2');
             
             const user1 = mentionedJid[0];
             const user2 = mentionedJid[1];
@@ -601,32 +746,36 @@ ${symbol} Congratulations!`,
             else if (percentage < 80) { emoji = '😍'; message = 'Great match!'; }
             else { emoji = '💖'; message = 'Perfect couple!'; }
             
-            return mention(`💘 *LOVE CALCULATOR*\n\n@${user1.split('@')[0]} × @${user2.split('@')[0]}\n\n${emoji} *${percentage}%* ${emoji}\n\n${message}`, [user1, user2]);
+            return await mention(`💘 *LOVE CALCULATOR*\n\n@${user1.split('@')[0]} × @${user2.split('@')[0]}\n\n${emoji} *${percentage}%* ${emoji}\n\n${message}`, [user1, user2]);
         }
 
         // TRUTH
         if (cmd === 'truth') {
-            return reply(`🎭 *TRUTH*\n\n${random(gameData.truths)}`);
+            return await reply(`🎭 *TRUTH*\n\n${random(gameData.truths)}`);
         }
 
         // DARE
         if (cmd === 'dare') {
-            return reply(`🎯 *DARE*\n\n${random(gameData.dares)}`);
+            return await reply(`🎯 *DARE*\n\n${random(gameData.dares)}`);
         }
 
         // QUIZ
         if (cmd === 'quiz') {
-            const gameId = `${from}_${sender}`;
+            const gameId = `quiz_${from}_${sender}`;
             
             if (!gameState.quiz.has(gameId)) {
                 const question = random(gameData.quizzes);
-                gameState.quiz.set(gameId, { question, createdAt: Date.now() });
+                gameState.quiz.set(gameId, { 
+                    question, 
+                    createdAt: Date.now(),
+                    lastActivity: Date.now()
+                });
                 
                 const shuffled = [...question.opts].sort(() => Math.random() - 0.5);
-                return reply(`❓ *QUIZ TIME*\n\n${question.q}\n\nOptions:\n${shuffled.map((opt, i) => `${i + 1}. ${opt}`).join('\n')}\n\nReply: ${config.prefix}quiz <answer>`);
+                return await reply(`❓ *QUIZ TIME*\n\n${question.q}\n\nOptions:\n${shuffled.map((opt, i) => `${i + 1}. ${opt}`).join('\n')}\n\nReply: ${config.prefix}quiz <answer>`);
             }
             
-            if (!text) return reply('❌ Provide answer!\nUsage: .quiz <answer>');
+            if (!text) return await reply('❌ Provide answer!\nUsage: .quiz <answer>');
             
             const game = gameState.quiz.get(gameId);
             const userAnswer = text.toLowerCase().trim();
@@ -634,15 +783,15 @@ ${symbol} Congratulations!`,
             gameState.quiz.delete(gameId);
             
             if (userAnswer === game.question.a || game.question.opts.some(opt => opt.toLowerCase() === userAnswer && opt.toLowerCase() === game.question.a)) {
-                return reply(`✅ *CORRECT!*\n\nAnswer: ${game.question.a}\n🎉 Well done!`);
+                return await reply(`✅ *CORRECT!*\n\nAnswer: ${game.question.a}\n🎉 Well done!`);
             } else {
-                return reply(`❌ *WRONG!*\n\nCorrect answer: ${game.question.a}`);
+                return await reply(`❌ *WRONG!*\n\nCorrect answer: ${game.question.a}`);
             }
         }
 
         // MATH
         if (cmd === 'math') {
-            const gameId = `${from}_${sender}`;
+            const gameId = `math_${from}_${sender}`;
             
             if (!args[0]) {
                 const ops = ['+', '-', '*'];
@@ -662,44 +811,46 @@ ${symbol} Congratulations!`,
                 
                 gameState.quiz.set(gameId, {
                     question: { q: `${num1} ${op} ${num2}`, a: answer.toString() },
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    lastActivity: Date.now()
                 });
                 
-                return reply(`🧮 *MATH CHALLENGE*\n\nSolve: *${num1} ${op} ${num2} = ?*\n\nReply: ${config.prefix}math <answer>`);
+                return await reply(`🧮 *MATH CHALLENGE*\n\nSolve: *${num1} ${op} ${num2} = ?*\n\nReply: ${config.prefix}math <answer>`);
             }
             
             const game = gameState.quiz.get(gameId);
-            if (!game) return reply('❌ No active challenge! Start: .math');
+            if (!game) return await reply('❌ No active challenge! Start: .math');
             
             const userAnswer = args[0];
             gameState.quiz.delete(gameId);
             
             if (userAnswer === game.question.a) {
-                return reply(`✅ *CORRECT!*\n\n${game.question.q} = ${game.question.a}\n🎉 Great!`);
+                return await reply(`✅ *CORRECT!*\n\n${game.question.q} = ${game.question.a}\n🎉 Great!`);
             } else {
-                return reply(`❌ *WRONG!*\n\nAnswer: ${game.question.a}`);
+                return await reply(`❌ *WRONG!*\n\nAnswer: ${game.question.a}`);
             }
         }
 
         // FAST TYPE
-        if (cmd === 'fasttype' || cmd === 'type') {
-            const gameId = `${from}_${sender}`;
+        if (cmd === 'fasttype') {
+            const gameId = `fasttype_${from}_${sender}`;
             
-            if (gameState.fasttype.has(gameId)) return reply('❌ You have an active game!');
+            if (gameState.fasttype.has(gameId)) return await reply('❌ You have an active game!');
             
             const word = random(gameData.fasttypeWords);
             gameState.fasttype.set(gameId, {
                 word,
                 startTime: Date.now(),
-                createdAt: Date.now()
+                createdAt: Date.now(),
+                lastActivity: Date.now()
             });
             
-            return reply(`⚡ *FAST TYPE CHALLENGE*\n\nType this word as fast as you can:\n\n*${word}*\n\nJust type the word (no command)!`);
+            return await reply(`⚡ *FAST TYPE CHALLENGE*\n\nType this word as fast as you can:\n\n*${word}*\n\nJust type the word (no command)!`);
         }
 
         // WORD CHAIN
-        if (cmd === 'wordchain' || cmd === 'wc') {
-            const gameId = from;
+        if (cmd === 'wordchain') {
+            const gameId = `wordchain_${from}`;
             
             if (!gameState.wordchain.has(gameId)) {
                 const startWord = random(['apple', 'elephant', 'tiger', 'rainbow', 'ocean']);
@@ -707,44 +858,50 @@ ${symbol} Congratulations!`,
                     lastWord: startWord,
                     words: [startWord],
                     players: new Set([sender]),
-                    createdAt: Date.now()
+                    createdAt: Date.now(),
+                    lastActivity: Date.now()
                 });
                 
-                return reply(`🔗 *WORD CHAIN GAME*\n\nStarting word: *${startWord}*\nNext must start with: *${startWord.slice(-1).toUpperCase()}*\n\nReply: ${config.prefix}wc <word>`);
+                return await reply(`🔗 *WORD CHAIN GAME*\n\nStarting word: *${startWord}*\nNext must start with: *${startWord.slice(-1).toUpperCase()}*\n\nReply: ${config.prefix}wc <word>`);
             }
             
             if (!args[0]) {
                 const game = gameState.wordchain.get(gameId);
-                return reply(`Current: *${game.lastWord}*\nNext starts with: *${game.lastWord.slice(-1).toUpperCase()}*`);
+                return await reply(`Current: *${game.lastWord}*\nNext starts with: *${game.lastWord.slice(-1).toUpperCase()}*`);
             }
             
             const game = gameState.wordchain.get(gameId);
             const newWord = args[0].toLowerCase();
             const lastLetter = game.lastWord.slice(-1);
             
-            if (newWord[0] !== lastLetter) return reply(`❌ Must start with *${lastLetter.toUpperCase()}*!`);
-            if (game.words.includes(newWord)) return reply(`❌ "${newWord}" already used!`);
-            if (newWord.length < 3) return reply(`❌ Minimum 3 letters!`);
+            if (newWord[0] !== lastLetter) return await reply(`❌ Must start with *${lastLetter.toUpperCase()}*!`);
+            if (game.words.includes(newWord)) return await reply(`❌ "${newWord}" already used!`);
+            if (newWord.length < 3) return await reply(`❌ Minimum 3 letters!`);
             
             game.lastWord = newWord;
             game.words.push(newWord);
             game.players.add(sender);
+            game.lastActivity = Date.now();
             
-            return reply(`✅ *${newWord.toUpperCase()}*\n\nChain: ${game.words.length} words\nPlayers: ${game.players.size}\n\nNext starts with: *${newWord.slice(-1).toUpperCase()}*`);
+            return await reply(`✅ *${newWord.toUpperCase()}*\n\nChain: ${game.words.length} words\nPlayers: ${game.players.size}\n\nNext starts with: *${newWord.slice(-1).toUpperCase()}*`);
         }
 
         // EMOJI QUIZ
-        if (cmd === 'emojiquiz' || cmd === 'eq') {
-            const gameId = `${from}_${sender}`;
+        if (cmd === 'emojiquiz') {
+            const gameId = `emojiquiz_${from}_${sender}`;
             
             if (!gameState.quiz.has(gameId)) {
                 const quiz = random(gameData.emojiquiz);
-                gameState.quiz.set(gameId, { question: quiz, createdAt: Date.now() });
+                gameState.quiz.set(gameId, { 
+                    question: quiz, 
+                    createdAt: Date.now(),
+                    lastActivity: Date.now()
+                });
                 
-                return reply(`🎯 *EMOJI QUIZ*\n\n${quiz.emoji}\n\nHint: ${quiz.hint}\n\nReply: ${config.prefix}eq <answer>`);
+                return await reply(`🎯 *EMOJI QUIZ*\n\n${quiz.emoji}\n\nHint: ${quiz.hint}\n\nReply: ${config.prefix}eq <answer>`);
             }
             
-            if (!text) return reply('❌ Provide answer!\nUsage: .eq <answer>');
+            if (!text) return await reply('❌ Provide answer!\nUsage: .eq <answer>');
             
             const game = gameState.quiz.get(gameId);
             const userAnswer = text.toLowerCase().trim();
@@ -752,9 +909,9 @@ ${symbol} Congratulations!`,
             gameState.quiz.delete(gameId);
             
             if (userAnswer === game.question.answer) {
-                return reply(`✅ *CORRECT!*\n\n${game.question.emoji} = ${game.question.answer}\n🎉 Well done!`);
+                return await reply(`✅ *CORRECT!*\n\n${game.question.emoji} = ${game.question.answer}\n🎉 Well done!`);
             } else {
-                return reply(`❌ *WRONG!*\n\nAnswer: ${game.question.answer}`);
+                return await reply(`❌ *WRONG!*\n\nAnswer: ${game.question.answer}`);
             }
         }
 
@@ -763,25 +920,25 @@ ${symbol} Congratulations!`,
         // ═══════════════════════════════════════════════════════════
         
         if (cmd === 'joke') {
-            return reply(random(gameData.jokes));
+            return await reply(random(gameData.jokes));
         }
         
         if (cmd === 'fact') {
-            return reply(random(gameData.facts));
+            return await reply(random(gameData.facts));
         }
         
         if (cmd === 'roast') {
             if (mentionedJid.length > 0) {
-                return mention(`@${mentionedJid[0].split('@')[0]}, ${random(gameData.roasts)}`, mentionedJid);
+                return await mention(`@${mentionedJid[0].split('@')[0]}, ${random(gameData.roasts)}`, mentionedJid);
             }
-            return reply(random(gameData.roasts));
+            return await reply(random(gameData.roasts));
         }
         
         if (cmd === 'compliment') {
             if (mentionedJid.length > 0) {
-                return mention(`@${mentionedJid[0].split('@')[0]}, ${random(gameData.compliments)}`, mentionedJid);
+                return await mention(`@${mentionedJid[0].split('@')[0]}, ${random(gameData.compliments)}`, mentionedJid);
             }
-            return reply(random(gameData.compliments));
+            return await reply(random(gameData.compliments));
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -789,61 +946,65 @@ ${symbol} Congratulations!`,
         // ═══════════════════════════════════════════════════════════
         
         if (cmd === 'addsudo') {
-            if (!isOwner(sender)) return reply('❌ Owner only command!');
+            if (!isOwner(sender)) return await reply('❌ Owner only command!');
             
             const target = mentionedJid[0] || (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null);
-            if (!target) return reply('Usage: .addsudo @user or .addsudo 919876543210');
+            if (!target) return await reply('Usage: .addsudo @user or .addsudo 919876543210');
             
             const targetNum = target.split('@')[0];
+            if (!validatePhoneNumber(targetNum)) {
+                return await reply('❌ Invalid phone number!');
+            }
+            
             if (global.sudoUsers.includes(targetNum)) {
-                return reply(`✅ @${targetNum} is already a sudo user!`);
+                return await reply(`✅ @${targetNum} is already a sudo user!`);
             }
             
             global.sudoUsers.push(targetNum);
-            const fs = await import('fs');
-            const path = await import('path');
-            const { fileURLToPath } = await import('url');
-            const __dirname = path.dirname(fileURLToPath(import.meta.url));
-            fs.writeFileSync(
-                path.join(__dirname, 'auth_info', 'sudo.json'),
-                JSON.stringify(global.sudoUsers, null, 2)
-            );
-            
-            return reply(`✅ Added @${targetNum} as sudo user!\n\nSudo users have admin privileges.`);
+            try {
+                fs.writeFileSync(
+                    path.join(__dirname, 'auth_info', 'sudo.json'),
+                    JSON.stringify(global.sudoUsers, null, 2)
+                );
+                return await reply(`✅ Added @${targetNum} as sudo user!\n\nSudo users have admin privileges.`);
+            } catch (err) {
+                console.error('Failed to save sudo users:', err);
+                return await reply('✅ User added temporarily (failed to save to file).');
+            }
         }
         
         if (cmd === 'delsudo') {
-            if (!isOwner(sender)) return reply('❌ Owner only command!');
+            if (!isOwner(sender)) return await reply('❌ Owner only command!');
             
             const target = mentionedJid[0] || (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null);
-            if (!target) return reply('Usage: .delsudo @user or .delsudo 919876543210');
+            if (!target) return await reply('Usage: .delsudo @user or .delsudo 919876543210');
             
             const targetNum = target.split('@')[0];
             if (!global.sudoUsers.includes(targetNum)) {
-                return reply(`❌ @${targetNum} is not a sudo user!`);
+                return await reply(`❌ @${targetNum} is not a sudo user!`);
             }
             
             global.sudoUsers = global.sudoUsers.filter(u => u !== targetNum);
-            const fs = await import('fs');
-            const path = await import('path');
-            const { fileURLToPath } = await import('url');
-            const __dirname = path.dirname(fileURLToPath(import.meta.url));
-            fs.writeFileSync(
-                path.join(__dirname, 'auth_info', 'sudo.json'),
-                JSON.stringify(global.sudoUsers, null, 2)
-            );
-            
-            return reply(`✅ Removed @${targetNum} from sudo users!`);
+            try {
+                fs.writeFileSync(
+                    path.join(__dirname, 'auth_info', 'sudo.json'),
+                    JSON.stringify(global.sudoUsers, null, 2)
+                );
+                return await reply(`✅ Removed @${targetNum} from sudo users!`);
+            } catch (err) {
+                console.error('Failed to save sudo users:', err);
+                return await reply('✅ User removed temporarily (failed to save to file).');
+            }
         }
         
-        if (cmd === 'listsudo' || cmd === 'sudolist') {
-            if (!isOwner(sender)) return reply('❌ Owner only command!');
+        if (cmd === 'listsudo') {
+            if (!isOwner(sender)) return await reply('❌ Owner only command!');
             
             if (global.sudoUsers.length === 0) {
-                return reply('📋 *SUDO USERS*\n\nNo sudo users added yet.');
+                return await reply('📋 *SUDO USERS*\n\nNo sudo users added yet.');
             }
             
-            return reply(`📋 *SUDO USERS*\n\n${global.sudoUsers.map((u, i) => `${i + 1}. +${u}`).join('\n')}\n\nTotal: ${global.sudoUsers.length}`);
+            return await reply(`📋 *SUDO USERS*\n\n${global.sudoUsers.map((u, i) => `${i + 1}. +${u}`).join('\n')}\n\nTotal: ${global.sudoUsers.length}`);
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -852,168 +1013,257 @@ ${symbol} Congratulations!`,
         
         if (!isGroup) {
             if (['add', 'kick', 'promote', 'demote', 'tagall', 'hidetag', 'group', 'setname', 'setdesc', 'admins', 'groupinfo'].includes(cmd)) {
-                return reply('❌ This command is for groups only!');
+                return await reply('❌ This command is for groups only!');
             }
         }
         
-        const senderIsAdmin = await isAdmin(sock, from, sender) || isSudo(sender);
+        const senderIsAdmin = await isAdmin(sock, from, sender) || isSudo(sender) || isOwner(sender);
         const botIsAdmin = await isBotAdmin(sock, from);
         
         // ADD
         if (cmd === 'add') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
-            if (!args[0]) return reply('Usage: .add 919876543210');
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
+            if (!args[0]) return await reply('Usage: .add 919876543210');
             
             const number = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+            if (!validatePhoneNumber(args[0].replace(/[^0-9]/g, ''))) {
+                return await reply('❌ Invalid phone number format!');
+            }
+            
             try {
                 await sock.groupParticipantsUpdate(from, [number], 'add');
-                return reply('✅ Member added!');
-            } catch {
-                return reply('❌ Failed to add member!');
+                return await reply('✅ Member added!');
+            } catch (err) {
+                console.error('Add error:', err);
+                return await reply('❌ Failed to add member! Check if number is valid.');
             }
         }
         
         // KICK
-        if (cmd === 'kick' || cmd === 'remove') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
+        if (cmd === 'kick') {
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
             
             const target = mentionedJid[0] || (quotedMsg && quotedParticipant);
-            if (!target) return reply('❌ Mention or reply to user!');
+            if (!target) return await reply('❌ Mention or reply to user!');
             
             try {
                 await sock.groupParticipantsUpdate(from, [target], 'remove');
-                return reply('✅ Member removed!');
-            } catch {
-                return reply('❌ Failed to remove!');
+                return await reply('✅ Member removed!');
+            } catch (err) {
+                console.error('Kick error:', err);
+                return await reply('❌ Failed to remove!');
             }
         }
         
         // PROMOTE
         if (cmd === 'promote') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
             
             const target = mentionedJid[0] || (quotedMsg && quotedParticipant);
-            if (!target) return reply('❌ Mention or reply to user!');
+            if (!target) return await reply('❌ Mention or reply to user!');
             
             try {
                 await sock.groupParticipantsUpdate(from, [target], 'promote');
-                return mention(`✅ @${target.split('@')[0]} is now admin!`, [target]);
-            } catch {
-                return reply('❌ Failed to promote!');
+                return await mention(`✅ @${target.split('@')[0]} is now admin!`, [target]);
+            } catch (err) {
+                console.error('Promote error:', err);
+                return await reply('❌ Failed to promote!');
             }
         }
         
         // DEMOTE
         if (cmd === 'demote') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
             
             const target = mentionedJid[0] || (quotedMsg && quotedParticipant);
-            if (!target) return reply('❌ Mention or reply to user!');
+            if (!target) return await reply('❌ Mention or reply to user!');
             
             try {
                 await sock.groupParticipantsUpdate(from, [target], 'demote');
-                return mention(`✅ @${target.split('@')[0]} removed from admin!`, [target]);
-            } catch {
-                return reply('❌ Failed to demote!');
+                return await mention(`✅ @${target.split('@')[0]} removed from admin!`, [target]);
+            } catch (err) {
+                console.error('Demote error:', err);
+                return await reply('❌ Failed to demote!');
             }
         }
         
         // TAGALL
         if (cmd === 'tagall') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
             
-            const metadata = await sock.groupMetadata(from);
-            const participants = metadata.participants.map(p => p.id);
-            const message = text || 'Important announcement!';
+            // Check rate limit for tagall
+            if (!checkRateLimit(sender, 'tagall', 1, 300000)) { // 5 minutes cooldown
+                return await reply('⚠️ Please wait 5 minutes before using tagall again!');
+            }
             
-            return mention(
+            try {
+                const metadata = await sock.groupMetadata(from);
+                const participants = metadata.participants.map(p => p.id);
+                const message = text || 'Important announcement!';
+                
+                return await mention(
 `📢 *GROUP ANNOUNCEMENT*\n\n${message}\n\n${participants.map(p => `@${p.split('@')[0]}`).join('\n')}`,
-                participants
-            );
+                    participants
+                );
+            } catch (err) {
+                console.error('Tagall error:', err);
+                return await reply('❌ Failed to fetch group members!');
+            }
         }
         
         // HIDETAG
         if (cmd === 'hidetag') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
             
-            const metadata = await sock.groupMetadata(from);
-            const participants = metadata.participants.map(p => p.id);
-            const message = text || 'Hidden tag message';
+            // Check rate limit for hidetag
+            if (!checkRateLimit(sender, 'hidetag', 2, 120000)) { // 2 minutes cooldown
+                return await reply('⚠️ Please wait 2 minutes before using hidetag again!');
+            }
             
-            return mention(message, participants);
+            try {
+                const metadata = await sock.groupMetadata(from);
+                const participants = metadata.participants.map(p => p.id);
+                const message = text || 'Hidden tag message';
+                
+                return await mention(message, participants);
+            } catch (err) {
+                console.error('Hidetag error:', err);
+                return await reply('❌ Failed to fetch group members!');
+            }
         }
         
         // GROUP SETTINGS
         if (cmd === 'group') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
-            if (!args[0]) return reply('Usage: .group <open/close>');
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
+            if (!args[0]) return await reply('Usage: .group <open/close>');
             
             const action = args[0].toLowerCase();
             if (action === 'open') {
                 await sock.groupSettingUpdate(from, 'not_announcement');
-                return reply('✅ Group opened!');
+                return await reply('✅ Group opened!');
             } else if (action === 'close') {
                 await sock.groupSettingUpdate(from, 'announcement');
-                return reply('✅ Group closed!');
+                return await reply('✅ Group closed!');
             } else {
-                return reply('❌ Invalid! Use: open or close');
+                return await reply('❌ Invalid! Use: open or close');
             }
         }
         
         // SETNAME
-        if (cmd === 'setname' || cmd === 'setsubject') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
-            if (!text) return reply('Usage: .setname <new name>');
+        if (cmd === 'setname') {
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
+            if (!text) return await reply('Usage: .setname <new name>');
             
+            const sanitizedText = sanitizeText(text, 25);
             try {
-                await sock.groupUpdateSubject(from, text);
-                return reply(`✅ Group name: ${text}`);
-            } catch {
-                return reply('❌ Failed to change name!');
+                await sock.groupUpdateSubject(from, sanitizedText);
+                return await reply(`✅ Group name: ${sanitizedText}`);
+            } catch (err) {
+                console.error('Setname error:', err);
+                return await reply('❌ Failed to change name!');
             }
         }
         
         // SETDESC
-        if (cmd === 'setdesc' || cmd === 'setdescription') {
-            if (!senderIsAdmin && !isOwner(sender)) return reply('❌ Admin only!');
-            if (!botIsAdmin) return reply('❌ Bot must be admin!');
-            if (!text) return reply('Usage: .setdesc <description>');
+        if (cmd === 'setdesc') {
+            if (!senderIsAdmin) return await reply('❌ Admin only!');
+            if (!botIsAdmin) return await reply('❌ Bot must be admin!');
+            if (!text) return await reply('Usage: .setdesc <description>');
             
+            const sanitizedText = sanitizeText(text, 500);
             try {
-                await sock.groupUpdateDescription(from, text);
-                return reply(`✅ Description updated!`);
-            } catch {
-                return reply('❌ Failed!');
+                await sock.groupUpdateDescription(from, sanitizedText);
+                return await reply(`✅ Description updated!`);
+            } catch (err) {
+                console.error('Setdesc error:', err);
+                return await reply('❌ Failed to update description!');
             }
         }
         
         // ADMINS
-        if (cmd === 'admins' || cmd === 'adminlist') {
-            const metadata = await sock.groupMetadata(from);
-            const admins = metadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin');
-            
-            return mention(
+        if (cmd === 'admins') {
+            try {
+                const metadata = await sock.groupMetadata(from);
+                const admins = metadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin');
+                
+                if (admins.length === 0) {
+                    return await reply('👥 *GROUP ADMINS*\n\nNo admins found!');
+                }
+                
+                return await mention(
 `👥 *GROUP ADMINS*\n\n${admins.map((a, i) => `${i + 1}. @${a.id.split('@')[0]}`).join('\n')}\n\nTotal: ${admins.length}`,
-                admins.map(a => a.id)
-            );
+                    admins.map(a => a.id)
+                );
+            } catch (err) {
+                console.error('Admins error:', err);
+                return await reply('❌ Failed to fetch group admins!');
+            }
         }
         
         // GROUPINFO
-        if (cmd === 'groupinfo' || cmd === 'gcinfo') {
-            const metadata = await sock.groupMetadata(from);
-            const admins = metadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin');
-            
-            return reply(
+        if (cmd === 'groupinfo') {
+            try {
+                const metadata = await sock.groupMetadata(from);
+                const admins = metadata.participants.filter(p => p.admin === 'admin' || p.admin === 'superadmin');
+                
+                return await reply(
 `📊 *GROUP INFO*\n\n📱 Name: ${metadata.subject}\n🆔 ID: ${metadata.id}\n👥 Members: ${metadata.participants.length}\n👤 Admins: ${admins.length}\n📝 Desc: ${metadata.desc || 'None'}\n📅 Created: ${new Date(metadata.creation * 1000).toDateString()}`);
+            } catch (err) {
+                console.error('Groupinfo error:', err);
+                return await reply('❌ Failed to fetch group info!');
+            }
         }
+
+        // Unknown command
+        await reply(`❌ Unknown command: ${cmd}\nType ${config.prefix}menu for available commands.`);
 
     } catch (err) {
         console.error('Handler error:', err);
+        try {
+            const from = msg.key.remoteJid;
+            await sock.sendMessage(from, { 
+                text: '❌ An error occurred while processing your command. Please try again.' 
+            });
+        } catch (sendErr) {
+            console.error('Failed to send error message:', sendErr);
+        }
     }
 };
+
+// ═══════════════════════════════════════════════════════════
+// EXPORT CLEANUP FUNCTION
+// ═══════════════════════════════════════════════════════════
+export const cleanup = () => {
+    if (cleanupInterval) {
+        clearInterval(cleanupInterval);
+        console.log('Game cleanup interval stopped');
+    }
+    
+    // Clear all game states
+    for (const games of Object.values(gameState)) {
+        games.clear();
+    }
+    
+    console.log('All game states cleared');
+};
+
+// ═══════════════════════════════════════════════════════════
+// GRACEFUL SHUTDOWN HANDLER
+// ═══════════════════════════════════════════════════════════
+process.on('SIGINT', () => {
+    console.log('\nShutting down gracefully...');
+    cleanup();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\nReceived termination signal...');
+    cleanup();
+    process.exit(0);
+});
