@@ -12,8 +12,18 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
 import { createServer } from 'http';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const AUTH_DIR = path.join(__dirname, 'auth_info');
+
+// Ensure auth directory exists
+if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
 
 // ═══════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -25,16 +35,28 @@ const config = {
     pairingNumber: process.env.PAIRING_NUMBER || '',
     sessionId: process.env.SESSION_ID || '',
     port: process.env.PORT || 3000,
-    // Image for session connection guide
-    sessionGuideImage:'https://github.com/amanmohdtp/Forka-Bot/blob/cc5fdb7a814251b44c1a5a06b3609663923d3249/session.jpg'
+    menuImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/menu.png',
+    aliveImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/alive.jpg',
+    sessionGuideImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/session.jpg'
 };
 
-const AUTH_DIR = path.join(__dirname, 'auth_info');
+// ═══════════════════════════════════════════════════════════
+// SUDO MANAGEMENT
+// ═══════════════════════════════════════════════════════════
+const SUDO_FILE = path.join(AUTH_DIR, 'sudo.json');
 
-// Ensure auth directory exists
-if (!fs.existsSync(AUTH_DIR)) {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-}
+const loadSudoUsers = () => {
+    if (fs.existsSync(SUDO_FILE)) {
+        return JSON.parse(fs.readFileSync(SUDO_FILE, 'utf8'));
+    }
+    return [];
+};
+
+const saveSudoUsers = (sudoUsers) => {
+    fs.writeFileSync(SUDO_FILE, JSON.stringify(sudoUsers, null, 2));
+};
+
+global.sudoUsers = loadSudoUsers();
 
 // ═══════════════════════════════════════════════════════════
 // SESSION ID MANAGEMENT
@@ -81,11 +103,11 @@ const printSettings = (sock, sessionId) => {
     
     console.log(chalk.cyan('\n⏰ RUNTIME INFO:'));
     console.log(chalk.white('├─ Started At    : ') + chalk.yellow(new Date().toLocaleString()));
-    console.log(chalk.white('├─ Auth Method   : ') + chalk.yellow('Pairing Code'));
+    console.log(chalk.white('├─ Device Type   : ') + chalk.yellow('Safari (MacOS)'));
     console.log(chalk.white('└─ Auth Location : ') + chalk.yellow(AUTH_DIR));
     
     console.log(chalk.cyan('\n🎮 FEATURES:'));
-    console.log(chalk.white('├─ Games         : ') + chalk.yellow('14+ Games Available'));
+    console.log(chalk.white('├─ Fun Games     : ') + chalk.yellow('Available'));
     console.log(chalk.white('├─ Group Mgmt    : ') + chalk.yellow('Full Admin Tools'));
     console.log(chalk.white('├─ Fun Commands  : ') + chalk.yellow('Jokes, Facts, Roasts'));
     console.log(chalk.white('└─ Auto-Reconnect: ') + chalk.green('Enabled'));
@@ -106,8 +128,8 @@ const printSettings = (sock, sessionId) => {
 // ═══════════════════════════════════════════════════════════
 const connectWithSessionId = async () => {
     if (!config.sessionId) {
-        console.log(chalk.red('❌ SESSION_ID not provided in environment variables'));
-        console.log(chalk.yellow('   Server will exit. Please provide SESSION_ID to connect.\n'));
+        console.log(chalk.red('❌ SESSION_ID not provided'));
+        console.log(chalk.yellow('   Server will exit. Please provide SESSION_ID.\n'));
         process.exit(1);
     }
 
@@ -188,7 +210,7 @@ const connectWithSessionId = async () => {
 *3️⃣ Important Notes:*
 ├ Keep this session ID safe
 ├ Don't share with others
-├ For support : +91 8304063560
+├ Support: +91 8304063560
 └ Enjoy Forka Bot!
 
 *💡 Quick Start:*
@@ -198,9 +220,9 @@ Type *${config.prefix}menu* to see all available commands!
 *Forka Bot* - Your WhatsApp Gaming Companion 🎮`
                     });
                     
-                    console.log(chalk.green('📤 Sent connection guide to user\n'));
+                    console.log(chalk.green('📤 Sent connection guide\n'));
                 } catch (err) {
-                    console.error(chalk.yellow('⚠️  Could not send guide message:'), err.message);
+                    console.error(chalk.yellow('⚠️  Could not send guide:'), err.message);
                 }
                 
                 printSettings(sock, config.sessionId);
@@ -215,7 +237,7 @@ Type *${config.prefix}menu* to see all available commands!
                     try {
                         await handleMessage(sock, msg);
                     } catch (err) {
-                        console.error(chalk.red('Message handling error:'), err);
+                        console.error(chalk.red('Message error:'), err);
                     }
                 });
             }
@@ -244,7 +266,7 @@ const connectWithPairingCode = async () => {
         },
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        browser: Browsers.ubuntu('Chrome'),
+        browser: Browsers.macOS('Safari'),
         getMessage: async () => ({ conversation: 'Forka Bot' }),
         defaultQueryTimeoutMs: undefined,
         connectTimeoutMs: 60000,
@@ -275,16 +297,16 @@ const connectWithPairingCode = async () => {
                     console.log(chalk.green('═'.repeat(60) + '\n'));
                     
                     console.log(chalk.cyan('📖 Instructions:'));
-                    console.log(chalk.white('  1. Open WhatsApp on your phone'));
-                    console.log(chalk.white('  2. Go to Settings → Linked Devices'));
-                    console.log(chalk.white('  3. Tap "Link a Device"'));
-                    console.log(chalk.white('  4. Tap "Link with phone number instead"'));
-                    console.log(chalk.white(`  5. Enter code: `) + chalk.yellow.bold(code));
+                    console.log(chalk.white('  1. Open WhatsApp'));
+                    console.log(chalk.white('  2. Settings → Linked Devices'));
+                    console.log(chalk.white('  3. Link a Device'));
+                    console.log(chalk.white('  4. Link with phone number'));
+                    console.log(chalk.white(`  5. Enter: `) + chalk.yellow.bold(code));
                     console.log(chalk.cyan('\n⏱️  Code expires in 60 seconds!\n'));
                     
                 } catch (err) {
                     pairingCodeSent = false;
-                    console.error(chalk.red('❌ Pairing code request failed:'), err.message);
+                    console.error(chalk.red('❌ Pairing failed:'), err.message);
                 }
             }, 5000);
         }
@@ -293,22 +315,22 @@ const connectWithPairingCode = async () => {
             const statusCode = lastDisconnect?.error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             
-            console.log(chalk.yellow(`\n⚠️  Connection closed. Code: ${statusCode}`));
+            console.log(chalk.yellow(`⚠️  Connection closed. Code: ${statusCode}`));
             
             if (statusCode === DisconnectReason.loggedOut) {
                 console.log(chalk.red('\n❌ Device Logged Out!'));
-                console.log(chalk.yellow('   Delete "auth_info" folder and restart.\n'));
+                console.log(chalk.yellow('   Delete auth_info and restart.\n'));
                 process.exit(0);
             }
             
             if (shouldReconnect) {
                 connectionAttempts++;
-                const delay = Math.min(connectionAttempts * 2000, 30000);
-                console.log(chalk.cyan(`🔄 Reconnecting in ${delay/1000}s...\n`));
+                const delayTime = Math.min(connectionAttempts * 2000, 30000);
+                console.log(chalk.cyan(`🔄 Reconnecting in ${delayTime/1000}s...\n`));
                 pairingCodeSent = false;
-                setTimeout(() => connectWithPairingCode(), delay);
+                setTimeout(() => connectWithPairingCode(), delayTime);
             } else {
-                console.log(chalk.red('❌ Cannot reconnect. Exiting.\n'));
+                console.log(chalk.red('❌ Cannot reconnect.\n'));
                 process.exit(1);
             }
         } else if (connection === 'open') {
@@ -323,35 +345,35 @@ const connectWithPairingCode = async () => {
                 console.log(chalk.green(`✅ Generated Session ID: ${sessionId}\n`));
             }
             
-            // Send session ID and welcome message
+            // Send session ID with image
             try {
                 const jid = sock.user.id;
                 await delay(2000);
                 
-                // Simple welcome message without image
+                // Send session ID message with image
                 await sock.sendMessage(jid, {
-                    text: `*✅ Forka Bot Successfully Linked!*
-
-*📱 Connection Info:*
-├ Bot Name: ${config.botName}
-├ Number: ${sock.user.id.split(':')[0]}
-├ Prefix: ${config.prefix}
-└ Status: Online
+                    image: { url: config.sessionGuideImage },
+                    caption: `*✅ Forka Bot Successfully Linked!*
 
 *🔑 Your Session ID:*
 \`\`\`${sessionId}\`\`\`
 
+*📱 Connection Info:*
+├ Bot: ${config.botName}
+├ Number: ${sock.user.id.split(':')[0]}
+├ Prefix: ${config.prefix}
+└ Status: Online
+
 ⚠️ *IMPORTANT:* Keep this Session ID safe!
-You can use it to reconnect your bot without pairing code.
 
 *🎮 Get Started:*
-├ ${config.prefix}menu - View all commands
+├ ${config.prefix}menu - All commands
 ├ ${config.prefix}alive - Check status
 ├ ${config.prefix}ping - Test speed
 └ ${config.prefix}help - Get help
 
-*📊 Available Features:*
-• 14+ Games
+*📊 Features:*
+• Fun Games
 • Group Management
 • Fun Commands
 • Auto Reconnect
@@ -362,12 +384,12 @@ Type *${config.prefix}menu* to explore!
 *Forka Bot* 🎮`
                 });
                 
-                console.log(chalk.green('📤 Sent Session ID to user\n'));
+                console.log(chalk.green('📤 Sent Session ID\n'));
                 
-                // Auto shutdown server after sending session
-                console.log(chalk.yellow('⚠️  Session ID sent successfully!'));
-                console.log(chalk.yellow('   Server will shut down in 10 seconds...'));
-                console.log(chalk.cyan('   To connect: Set SESSION_ID in .env and restart\n'));
+                // Auto shutdown
+                console.log(chalk.yellow('⚠️  Session ID sent!'));
+                console.log(chalk.yellow('   Server shutting down in 10s...'));
+                console.log(chalk.cyan('   Set SESSION_ID in .env and restart\n'));
                 
                 setTimeout(() => {
                     console.log(chalk.red('🛑 Server shutting down...\n'));
@@ -397,7 +419,7 @@ process.on('uncaughtException', (err) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// MAIN START LOGIC
+// START
 // ═══════════════════════════════════════════════════════════
 console.clear();
 console.log(chalk.cyan.bold(`
@@ -416,50 +438,47 @@ console.log(chalk.white(`├─ Has Session: ${hasSession ? 'Yes' : 'No'}`));
 console.log(chalk.white(`├─ Session ID: ${hasSessionId ? config.sessionId : 'Not Set'}`));
 console.log(chalk.white(`└─ Pairing Number: ${config.pairingNumber || 'Not Set'}\n`));
 
-// Decide connection method
+// Connection logic
 if (hasSessionId) {
-    // Connect with Session ID
     console.log(chalk.green('✓ Session ID provided, connecting...\n'));
     connectWithSessionId().catch(err => {
-        console.error(chalk.red('Failed to connect:'), err);
+        console.error(chalk.red('Failed:'), err);
         process.exit(1);
     });
 } else if (hasSession) {
-    // Has session but no Session ID - generate one
-    console.log(chalk.yellow('⚠️  Session exists but no SESSION_ID in env'));
+    console.log(chalk.yellow('⚠️  Session exists but no SESSION_ID'));
     console.log(chalk.yellow('   Generating Session ID...\n'));
     
     const sessionId = generateSessionId();
     saveSessionId(sessionId);
     
-    console.log(chalk.green(`✅ Generated Session ID: ${sessionId}`));
-    console.log(chalk.cyan('   Add this to your .env file as SESSION_ID\n'));
+    console.log(chalk.green(`✅ Session ID: ${sessionId}`));
+    console.log(chalk.cyan('   Add to .env as SESSION_ID\n'));
     
     connectWithSessionId().catch(err => {
-        console.error(chalk.red('Failed to connect:'), err);
+        console.error(chalk.red('Failed:'), err);
         process.exit(1);
     });
 } else {
-    // No session - require pairing
     if (!config.pairingNumber) {
-        console.log(chalk.red('❌ ERROR: PAIRING_NUMBER not set!'));
+        console.log(chalk.red('❌ PAIRING_NUMBER not set!'));
         console.log(chalk.yellow('   Set PAIRING_NUMBER to generate session\n'));
         process.exit(1);
     }
     
-    console.log(chalk.yellow('⚠️  No session found, requesting pairing code...\n'));
+    console.log(chalk.yellow('⚠️  No session, requesting pairing code...\n'));
     connectWithPairingCode().catch(err => {
-        console.error(chalk.red('Failed to start:'), err);
+        console.error(chalk.red('Failed:'), err);
         setTimeout(() => connectWithPairingCode(), 15000);
     });
 }
 
-// Keep alive server (optional)
+// Keep alive (optional)
 if (process.env.KEEP_ALIVE === 'true') {
     createServer((req, res) => {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('Forka Bot is running!\n');
+        res.end('Forka Bot Running\n');
     }).listen(config.port, () => {
-        console.log(chalk.green(`✅ Keep-alive server on port ${config.port}\n`));
+        console.log(chalk.green(`✅ Keep-alive on port ${config.port}\n`));
     });
 }

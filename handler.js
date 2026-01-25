@@ -4,6 +4,9 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 // ═══════════════════════════════════════════════════════════
 // CONFIG
 // ═══════════════════════════════════════════════════════════
@@ -11,9 +14,15 @@ const config = {
     prefix: process.env.PREFIX || '.',
     ownerNumber: process.env.OWNER_NUMBER || '',
     botName: process.env.BOT_NAME || 'Forka',
-    menuImage: process.env.MENU_IMAGE || 'https://i.imgur.com/6DwHKh9.jpeg',
-    aliveImage: process.env.ALIVE_IMAGE || 'https://i.imgur.com/MKtoXKz.jpeg',
+    menuImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/menu.png',
+    aliveImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/alive.jpg',
     startTime: Date.now()
+};
+
+// Sudo helpers
+const isSudo = (sender) => {
+    const num = sender.split('@')[0];
+    return global.sudoUsers?.includes(num) || false;
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -280,7 +289,7 @@ export const handleMessage = async (sock, msg) => {
 ├ ${config.prefix}owner - Owner info
 └ ${config.prefix}runtime - Uptime
 
-🎮 *GAMES* (14 Games!)
+🎮 *GAMES* (Fun Games!)
 ├ ${config.prefix}ttt @user - Tic Tac Toe
 ├ ${config.prefix}rps <choice> - Rock Paper Scissors
 ├ ${config.prefix}dice - Roll a dice
@@ -776,6 +785,68 @@ ${symbol} Congratulations!`,
         }
 
         // ═══════════════════════════════════════════════════════════
+        // SUDO COMMANDS (Owner Only)
+        // ═══════════════════════════════════════════════════════════
+        
+        if (cmd === 'addsudo') {
+            if (!isOwner(sender)) return reply('❌ Owner only command!');
+            
+            const target = mentionedJid[0] || (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null);
+            if (!target) return reply('Usage: .addsudo @user or .addsudo 919876543210');
+            
+            const targetNum = target.split('@')[0];
+            if (global.sudoUsers.includes(targetNum)) {
+                return reply(`✅ @${targetNum} is already a sudo user!`);
+            }
+            
+            global.sudoUsers.push(targetNum);
+            const fs = await import('fs');
+            const path = await import('path');
+            const { fileURLToPath } = await import('url');
+            const __dirname = path.dirname(fileURLToPath(import.meta.url));
+            fs.writeFileSync(
+                path.join(__dirname, 'auth_info', 'sudo.json'),
+                JSON.stringify(global.sudoUsers, null, 2)
+            );
+            
+            return reply(`✅ Added @${targetNum} as sudo user!\n\nSudo users have admin privileges.`);
+        }
+        
+        if (cmd === 'delsudo') {
+            if (!isOwner(sender)) return reply('❌ Owner only command!');
+            
+            const target = mentionedJid[0] || (args[0] ? args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null);
+            if (!target) return reply('Usage: .delsudo @user or .delsudo 919876543210');
+            
+            const targetNum = target.split('@')[0];
+            if (!global.sudoUsers.includes(targetNum)) {
+                return reply(`❌ @${targetNum} is not a sudo user!`);
+            }
+            
+            global.sudoUsers = global.sudoUsers.filter(u => u !== targetNum);
+            const fs = await import('fs');
+            const path = await import('path');
+            const { fileURLToPath } = await import('url');
+            const __dirname = path.dirname(fileURLToPath(import.meta.url));
+            fs.writeFileSync(
+                path.join(__dirname, 'auth_info', 'sudo.json'),
+                JSON.stringify(global.sudoUsers, null, 2)
+            );
+            
+            return reply(`✅ Removed @${targetNum} from sudo users!`);
+        }
+        
+        if (cmd === 'listsudo' || cmd === 'sudolist') {
+            if (!isOwner(sender)) return reply('❌ Owner only command!');
+            
+            if (global.sudoUsers.length === 0) {
+                return reply('📋 *SUDO USERS*\n\nNo sudo users added yet.');
+            }
+            
+            return reply(`📋 *SUDO USERS*\n\n${global.sudoUsers.map((u, i) => `${i + 1}. +${u}`).join('\n')}\n\nTotal: ${global.sudoUsers.length}`);
+        }
+
+        // ═══════════════════════════════════════════════════════════
         // GROUP ADMIN COMMANDS
         // ═══════════════════════════════════════════════════════════
         
@@ -785,7 +856,7 @@ ${symbol} Congratulations!`,
             }
         }
         
-        const senderIsAdmin = await isAdmin(sock, from, sender);
+        const senderIsAdmin = await isAdmin(sock, from, sender) || isSudo(sender);
         const botIsAdmin = await isBotAdmin(sock, from);
         
         // ADD
