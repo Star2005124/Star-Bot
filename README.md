@@ -54,6 +54,7 @@ Set these Environment Variables in your hosting dashboard:
  * Admin Tools: Auto-kick, add, and tag-all functionality.
  * Entertainment: Games, stickers, and interactive commands.
  * Reliability: 24/7 uptime with auto-reconnect enabled.
+ * 
 🛡️ Important Notes
  * Security: Never commit your .env or auth_info folder to GitHub.
  * Troubleshooting: If the bot goes offline, delete the auth_info folder and re-pair.
@@ -64,8 +65,8 @@ Set these Environment Variables in your hosting dashboard:
 <a href="https://github.com/amanmohdtp">
 <img src="https://img.shields.io/badge/Developer%20Profile-181717?style=for-the-badge&logo=github" alt="Aman GitHub"/>
 </a>
-<a href="https://whatsapp.com/channel/your-channel-link">
-<img src="https://img.shields.io/badge/WhatsApp%20Channel-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="WhatsApp"/>
+<a href="https://wa.me/918304063560">
+<img src="https://img.shields.io/badge/WhatsApp%20Contact-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="WhatsApp"/>
 </a>
 </div>
 <div align="center">
