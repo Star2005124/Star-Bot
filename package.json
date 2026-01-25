@@ -1,7 +1,7 @@
 {
   "name": "forka-bot",
   "version": "2.0.0",
-  "description": "Forka WhatsApp Bot - Server Side Only",
+  "description": "Forka WhatsApp Bot - Session ID Based Deployment",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -11,9 +11,11 @@
     "whatsapp",
     "bot",
     "baileys",
-    "forka"
+    "forka",
+    "session",
+    "pairing"
   ],
-  "author": "amanmohdtp",
+  "author": "Forka Team",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.8",
