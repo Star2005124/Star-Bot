@@ -15,7 +15,7 @@
     "session",
     "pairing"
   ],
-  "author": "Forka Team",
+  "author": "amanmohdtp",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.8",
