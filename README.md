@@ -1,6 +1,7 @@
 # Forka Bot
 
-WhatsApp bot with pairing code deployment. No web interface needed.
+WhatsApp bot with pairing code deployment.
+No web interface needed.
 🚨 Check Common issues #5
 
 ## 🚀 Quick Setup
