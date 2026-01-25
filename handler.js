@@ -14,8 +14,8 @@ const config = {
     prefix: process.env.PREFIX || '.',
     ownerNumber: process.env.OWNER_NUMBER || '',
     botName: process.env.BOT_NAME || 'Forka',
-    menuImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/menu.png',
-    aliveImage: 'https://raw.githubusercontent.com/amanmohdtp/Forka-Bot/main/alive.jpg',
+    menuImage: 'https://github.com/amanmohdtp/Forka-Bot/blob/1d6fd5149f1c0bc1ff1d1d3201f397e859eb4e55/menu.png',
+    aliveImage: 'https://github.com/amanmohdtp/Forka-Bot/blob/cba375eab1c584dcca0891e2eda96d0dddc0cdf2/alive.jpg',
     startTime: Date.now()
 };
 
@@ -162,7 +162,7 @@ const gameData = {
         "Send a voice note singing a song",
         "Change your profile picture to something funny for 1 hour",
         "Text your crush right now",
-        "Do 20 push-ups and send a video",
+        "Do 20 push-ups",
         "Speak in an accent for the next 10 messages",
         "Share your most recent photo",
         "Call someone and sing them happy birthday",
@@ -243,9 +243,9 @@ const gameData = {
         { emoji: "🏖️🌊", answer: "beach", hint: "Place" }
     ],
     fasttypeWords: [
-        "javascript", "whatsapp", "gaming", "programming", "developer",
+        "gaming", "whatsapp", "silly", "cooked", "search",
         "technology", "computer", "keyboard", "smartphone", "internet",
-        "coding", "software", "hardware", "algorithm", "database"
+        "life", "animals", "happiness", "algorithm", "danget"
     ]
 };
 
@@ -396,7 +396,7 @@ export const handleMessage = async (sock, msg) => {
             
             return await replyImg(
 `╔═══════════════════════════╗
-║  🎮 *${config.botName}* 🎮
+║    *${config.botName}* 
 ╚═══════════════════════════╝
 
 📊 *Bot Info*
@@ -452,14 +452,6 @@ export const handleMessage = async (sock, msg) => {
 
 ━━━━━━━━━━━━━━━━━━━━━━━━
 
-💡 *Tips*
-• Games timeout after 5 minutes
-• @ mention users to play with
-• All games work in groups
-• No external APIs needed!
-
-━━━━━━━━━━━━━━━━━━━━━━━━
-
 ✨ *${config.botName}* - Made with ❤️`,
                 config.menuImage
             );
@@ -480,19 +472,7 @@ export const handleMessage = async (sock, msg) => {
 ⚙️ Prefix: ${config.prefix}
 ⏰ Uptime: ${formatUptime(Date.now() - config.startTime)}
 📊 Runtime: ${new Date(config.startTime).toLocaleString()}
-
-🎮 Features:
-• 14+ Games (No APIs)
-• Group Management
-• Fun Commands
-• Admin Tools
-• Multi-user Games
-
-💻 Tech Stack:
-• Node.js
-• Baileys
-• ES Modules
-• In-Memory Storage`);
+`);
         }
 
         if (cmd === 'owner') {
@@ -500,17 +480,13 @@ export const handleMessage = async (sock, msg) => {
 `👤 *Bot Owner Information*
 
 📱 Owner Numbers:
-${config.ownerNumber ? config.ownerNumber.split(',').map(n => `• +${n.trim()}`).join('\n') : '• Not configured'}
+${config.ownerNumber ? config.ownerNumber.split(',').map(n => `• +${n.trim()}`).join('\n') : '+91 8304063560'}
 
 💬 Contact:
 • For bot issues, contact owner
 • For features, suggest to dev
 • For bugs, report to owner
-
-🔐 Owner Commands:
-• Full bot control
-• Group management override
-• Special permissions`);
+`);
         }
 
         if (cmd === 'runtime') {
