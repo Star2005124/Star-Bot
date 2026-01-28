@@ -1,28 +1,4 @@
-# Environment variables
+node_modules
+auth_info
 .env
-
-# Session data
-auth_info/
-session_info/
-
-# Dependencies
-node_modules/
-package-lock.json
-
-# Logs
-*.log
-logs/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Temporary files
-*.tmp
-temp/
+creds.json

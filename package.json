@@ -1,20 +1,12 @@
 {
   "name": "forka-bot",
   "version": "2.0.0",
-  "description": "Forka WhatsApp Bot - Session ID Based Deployment",
+  "description": "Minimal WhatsApp Bot using Baileys",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [
-    "whatsapp",
-    "bot",
-    "baileys",
-    "forka",
-    "session",
-    "pairing"
-  ],
   "author": "amanmohdtp",
   "license": "MIT",
   "dependencies": {
