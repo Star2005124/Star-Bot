@@ -142,10 +142,6 @@ export const handleMessage = async (sock, msg, config) => {
     case 'admins':
       if (!isGroup) return reply('❌ Group only command');
       const meta2 = await sock.groupMetadata(from);
-      const admins = meta2.participants.filter((p) => p.admin).map((p) => `• @${p.id.split('@')[0]}`);
-      return mention(`👥 Admins:\n${admins.join('\n')}`, meta2.participants.filter((p) => p.admin).map((p case 'admins':
-      if (!isGroup) return reply('❌ Group only command');
-      const meta2 = await sock.groupMetadata(from);
       const admins = meta2.participants
         .filter((p) => p.admin)
         .map((p) => `• @${p.id.split('@')[0]}`);
