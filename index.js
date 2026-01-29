@@ -20,11 +20,11 @@ const AUTH_DIR = path.join(__dirname, 'auth_info');
 if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 const config = {
-  botName: process.env.BOT_NAME || 'Forka',
-  ownerName: process.env.OWNER_NAME || 'Owner',
+  botName: process.env.BOT_NAME || 'Star Bot-Chan',
+  ownerName: process.env.OWNER_NAME || 'Star',
   prefix: process.env.PREFIX || '.',
-  ownerNumber: process.env.OWNER_NUMBER || '',
-  pairingNumber: process.env.PAIRING_NUMBER || '',
+  ownerNumber: process.env.OWNER_NUMBER || '601165811519',
+  pairingNumber: process.env.PAIRING_NUMBER || '601163926220',
   port: process.env.PORT || 3000,
   debug: process.env.DEBUG === 'true' || false,
   version: '2.1.0'
