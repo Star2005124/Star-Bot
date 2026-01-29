@@ -1,13 +1,13 @@
 {
-  "name": "forka-bot",
-  "version": "2.0.0",
-  "description": "Minimal WhatsApp Bot using Baileys",
+  "name": "Star Bot-Chan",
+  "version": "2.3.5",
+  "description": "Made by Star to assist you, play games with you, and more!",
   "main": "index.js",
   "type": "module",
   "scripts": {
     "start": "node index.js"
   },
-  "author": "amanmohdtp",
+  "author": "Star",
   "license": "MIT",
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.8",
