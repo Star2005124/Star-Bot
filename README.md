@@ -13,9 +13,9 @@ It features a seamless Pairing Code deployment system, eliminating the need for 
 
 <br/>
 
-<img src="https://img.shields.io/github/stars/amanmohdtp/Forka-Bot?style=for-the-badge&label=Stars" alt="Stars"/>
-<img src="https://img.shields.io/github/forks/amanmohdtp/Forka-Bot?style=for-the-badge&label=Forks" alt="Forks"/>
-<img src="https://img.shields.io/github/issues/amanmohdtp/Forka-Bot?style=for-the-badge&label=Issues" alt="Issues"/>
+<img src="https://img.shields.io/github/stars/amanmohdtp/forka-bot?style=for-the-badge" alt="Stars" />
+<img src="https://img.shields.io/github/forks/amanmohdtp/forka-bot?style=for-the-badge" alt="Forks" />
+<img src="https://img.shields.io/github/issues/amanmohdtp/forka-bot?style=for-the-badge" alt="Issues" />
 
 </div>
 
