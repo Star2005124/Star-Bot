@@ -21,15 +21,25 @@ if (!fs.existsSync(AUTH_DIR)) fs.mkdirSync(AUTH_DIR, { recursive: true });
 
 const config = {
   botName: process.env.BOT_NAME || 'Forka',
+  ownerName: process.env.OWNER_NAME || 'Owner',
   prefix: process.env.PREFIX || '.',
   ownerNumber: process.env.OWNER_NUMBER || '',
   pairingNumber: process.env.PAIRING_NUMBER || '',
-  port: process.env.PORT || 3000
+  port: process.env.PORT || 3000,
+  debug: process.env.DEBUG === 'true' || false,
+  version: '2.1.0'
 };
 
-let pairingCodeSent = false;
+let botState = {
+  isConnected: false,
+  pairingCodeSent: false,
+  startTime: Date.now(),
+  sock: null
+};
 
 async function startBot() {
+  console.log(chalk.cyan('[START] Initializing bot...'));
+  
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   const { version } = await fetchLatestBaileysVersion();
 
@@ -39,112 +49,152 @@ async function startBot() {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
     },
-    logger: pino({ level: 'silent' }),
+    logger: config.debug ? pino({ level: 'debug' }) : pino({ level: 'silent' }),
     printQRInTerminal: false,
     browser: Browsers.ubuntu('Chrome'),
-    getMessage: async () => ({ conversation: 'Forka Bot' })
+    getMessage: async () => undefined,
+    markOnlineOnConnect: true,
+    syncFullHistory: false,
+    retryRequestDelayMs: 1000,
+    maxMsgRetryCount: 3,
+    defaultQueryTimeoutMs: 60000
   });
+
+  botState.sock = sock;
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', async ({ connection, lastDisconnect }) => {
-    // Request pairing code when connecting
-    if (connection === 'connecting' && !state.creds.registered && !pairingCodeSent) {
-      if (!config.pairingNumber) {
-        console.log(chalk.red('❌ PAIRING_NUMBER not set in .env file'));
-        return;
+  sock.ev.on('connection.update', async (update) => {
+    const { connection, lastDisconnect, qr } = update;
+    
+    if (qr && !botState.pairingCodeSent) {
+      console.log(chalk.yellow('🔄 QR code generated (ignored - using pairing code)'));
+    }
+
+    if (connection === 'connecting' && !state.creds.registered && !botState.pairingCodeSent) {
+      const pairingNumber = config.pairingNumber.replace(/[^0-9]/g, '');
+      
+      if (!pairingNumber) {
+        console.log(chalk.red('❌ ERROR: PAIRING_NUMBER is missing or invalid in .env'));
+        process.exit(1);
       }
 
       setTimeout(async () => {
         try {
-          const phoneNumber = config.pairingNumber.replace(/[^0-9]/g, '');
-          console.log(chalk.cyan(`📲 Requesting pairing code for +${phoneNumber}...`));
+          console.log(chalk.cyan(`📲 Requesting pairing code for +${pairingNumber}...`));
           
-          const code = await sock.requestPairingCode(phoneNumber);
-          pairingCodeSent = true;
+          const code = await sock.requestPairingCode(pairingNumber);
+          botState.pairingCodeSent = true;
           
           console.log(chalk.green('\n' + '═'.repeat(50)));
           console.log(chalk.green.bold('  📱 PAIRING CODE: ') + chalk.yellow.bold(code));
           console.log(chalk.green('═'.repeat(50)));
           console.log(chalk.cyan('\n📖 How to use:'));
           console.log(chalk.white('  1. Open WhatsApp → Settings → Linked Devices'));
-          console.log(chalk.white('  2. Tap "Link a Device"'));
-          console.log(chalk.white('  3. Tap "Link with phone number instead"'));
-          console.log(chalk.white(`  4. Enter: `) + chalk.yellow.bold(code));
-          console.log(chalk.cyan('  5. Wait for connection...\n'));
+          console.log(chalk.white('  2. Tap "Link with phone number instead"'));
+          console.log(chalk.white(`  3. Enter code: `) + chalk.yellow.bold(code) + '\n');
         } catch (err) {
-          pairingCodeSent = false;
+          botState.pairingCodeSent = false;
           console.error(chalk.red('❌ Pairing failed:'), err.message);
+          setTimeout(() => startBot(), 10000);
         }
-      }, 5000);
+      }, 3000);
     }
 
     if (connection === 'close') {
+      botState.isConnected = false;
       const code = lastDisconnect?.error?.output?.statusCode;
+      
       if (code === DisconnectReason.loggedOut) {
-        console.log(chalk.red('❌ Logged out. Delete auth_info and re-pair.'));
+        console.log(chalk.red('\n❌ LOGGED OUT - Clearing session...'));
+        fs.rmSync(AUTH_DIR, { recursive: true, force: true });
         process.exit(0);
       } else {
-        console.log(chalk.yellow('⚠️ Connection closed. Reconnecting...'));
-        pairingCodeSent = false;
-        setTimeout(() => startBot(), 3000);
+        console.log(chalk.yellow(`🔄 Connection lost (${code}). Reconnecting...`));
+        botState.pairingCodeSent = false;
+        setTimeout(() => startBot(), 5000);
       }
     } else if (connection === 'open') {
-      pairingCodeSent = false;
-      console.log(chalk.green('\n' + '═'.repeat(50)));
-      console.log(chalk.green.bold(`  ✅ ${config.botName} CONNECTED!`));
-      console.log(chalk.green('═'.repeat(50)));
-      console.log(chalk.white(`  📱 Number: ${sock.user.id.split(':')[0]}`));
-      console.log(chalk.white(`  👤 Name: ${sock.user.name || 'Not Set'}`));
-      console.log(chalk.white(`  ⏰ Time: ${new Date().toLocaleString()}`));
-      console.log(chalk.green('═'.repeat(50) + '\n'));
+      botState.isConnected = true;
+      botState.pairingCodeSent = false;
+      
+      console.log(chalk.green.bold(`\n✅ ${config.botName.toUpperCase()} IS ONLINE!`));
+      console.log(chalk.white(`📱 Connected as: +${sock.user.id.split(':')[0]}\n`));
+
+      setTimeout(async () => {
+        try { await sendWelcomeMessage(sock); } catch (err) {}
+      }, 2000);
     }
   });
 
-  // Import handler
-  const { handleMessage } = await import('./handler.js');
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message || msg.key.fromMe) return;
-    try {
-      await handleMessage(sock, msg, config);
-    } catch (err) {
-      console.error(chalk.red('Message error:'), err);
-    }
-  });
-
+  setupMessageHandler(sock);
   return sock;
 }
 
-console.clear();
-console.log(chalk.cyan.bold(`
-╔════════════════════════════════════╗
-║     🎮 ${config.botName.toUpperCase()} BOT STARTING...      ║
-╚════════════════════════════════════╝
-`));
+async function sendWelcomeMessage(sock) {
+  if (!sock?.user?.id) return;
+  
+  const botNumber = sock.user.id.split(':')[0] + '@s.whatsapp.net';
+  const ownerJid = config.ownerNumber 
+    ? config.ownerNumber.replace(/[^0-9]/g, '') + '@s.whatsapp.net'
+    : botNumber;
 
-const hasAuth = fs.existsSync(path.join(AUTH_DIR, 'creds.json'));
-if (hasAuth) {
-  console.log(chalk.green('✓ Session found, connecting...\n'));
-} else {
-  if (!config.pairingNumber) {
-    console.log(chalk.red('❌ No session & no PAIRING_NUMBER set!'));
-    console.log(chalk.yellow('   Add to .env: PAIRING_NUMBER=1234567890\n'));
-    process.exit(1);
+  const welcomeText = 
+    `╔════════════════════════════╗\n` +
+    `║     ${config.botName.toUpperCase()} BOT ONLINE     ║\n` +
+    `╚════════════════════════════╝\n\n` +
+    `✨ *Status:* Active & Ready\n` +
+    `📱 *Number:* +${botNumber.split('@')[0]}\n` +
+    `🔧 *Prefix:* ${config.prefix}\n` +
+    `👑 *Owner:* \( {config.ownerName} ( \){config.ownerNumber || 'Not set'})\n` +
+    `🕒 *Started:* ${new Date(botState.startTime).toLocaleString()}\n\n` +
+    `Type *${config.prefix}menu* to see all commands! 🚀`;
+
+  try {
+    await sock.sendMessage(ownerJid, { 
+      text: welcomeText,
+      footer: `Powered by \( {config.botName} v \){config.version}`
+    });
+    console.log(chalk.cyan('Welcome message sent to owner/self'));
+  } catch (err) {
+    console.error(chalk.red('Failed to send welcome message:'), err.message);
   }
-  console.log(chalk.yellow('⚠️  No session found, pairing mode enabled\n'));
 }
 
-startBot().catch(err => {
-  console.error(chalk.red('Startup failed:'), err);
-  process.exit(1);
-});
+async function setupMessageHandler(sock) {
+  try {
+    const { handleMessage } = await import('./handler.js');
+    
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+      if (type !== 'notify') return;
+      const msg = messages[0];
+      if (!msg?.message || msg.key.fromMe) return;
+      
+      try {
+        await handleMessage(sock, msg, { ...config, startTime: botState.startTime });
+      } catch (err) {
+        console.error(chalk.red('[HANDLER ERROR]'), err.message);
+      }
+    });
+  } catch (err) {
+    console.error(chalk.red('❌ Failed to load handler.js'));
+  }
+}
 
-if (process.env.KEEP_ALIVE === 'true') {
+function startHealthCheck() {
+  if (process.env.KEEP_ALIVE !== 'true') return;
   createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Forka Bot Running\n');
-  }).listen(config.port, () => {
-    console.log(chalk.green(`✅ Keep-alive on port ${config.port}`));
-  });
+    res.writeHead(200);
+    res.end(JSON.stringify({ status: 'running', bot: config.botName }));
+  }).listen(config.port);
 }
+
+process.on('SIGINT', () => process.exit(0));
+process.on('unhandledRejection', (err) => console.error(chalk.red('Rejection:'), err));
+
+// Startup
+console.clear();
+console.log(chalk.cyan.bold(`╔════════════════════════════╗\n║    ${config.botName.toUpperCase()} BOT STARTING...    ║\n╚════════════════════════════╝`));
+
+startBot();
+startHealthCheck();
