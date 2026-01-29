@@ -4,9 +4,9 @@ Forka Bot is a high‑performance WhatsApp bot built with the Baileys library.
 It features a seamless Pairing Code deployment system, eliminating the need for QR scanning.
 
 <div align="center">
-  
+
 <a href="https://git.io/typing-svg">
-<img src="https://readme-typing-svg.demolab.com?font=Odibee+Sans&size=50&pause=1000&color=33ff00&center=true&width=910&height=100&lines=Forka-Bot;Pairing+Code+Deployment;Coded+By+Aman" alt="Typing SVG" />
+  <img src="https://readme-typing-svg.demolab.com?font=Odibee+Sans&size=50&pause=1000&center=true&vCenter=true&width=910&height=70&color=f0e130&lines=Forka-Bot;Pairing+Code+Deployment;Coded+By+Aman" alt="Typing SVG" />
 </a>
 
 <img src="https://github.com/amanmohdtp/Forka-Bot/blob/1d6fd5149f1c0bc1ff1d1d3201f397e859eb4e55/menu.png" alt="Forka Bot" height="300">
